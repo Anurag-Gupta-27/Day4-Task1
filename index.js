@@ -1,46 +1,48 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const path = require('path');
-const https = require('https');
 
-const TIMEOUT = 60000; // 30 seconds timeout
+const TIMEOUT = 60000; // 60 seconds timeout
 
 (async () => {
   try {
     // Launch the browser
-    const browser = await puppeteer.launch({ headless: "true" }).catch(e => {
-      console.error('Failed to launch browser:', e);
-      throw e;
-    });
-    console.log('Browser launched successfully');
-
-    const page = await browser.newPage().catch(e => {
-      console.error('Failed to create new page:', e);
-      throw e;
-    });
-    console.log('New page created');
+    const browser = await puppeteer.launch({ headless: "new" });
+    const page = await browser.newPage();
 
     // Navigate to the ZAP projects page
-    const url = 'https://zap.planning.nyc.gov/projects/';
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: TIMEOUT }).catch(e => {
-      console.error(`Failed to navigate to ${url}:`, e);
-      throw e;
-    });
-    console.log('Successfully navigated to the ZAP projects page');
+    await page.goto('https://zap.planning.nyc.gov/projects/', { waitUntil: 'networkidle0', timeout: TIMEOUT });
 
-    // Optional: Take a screenshot of the page
-    await page.screenshot({ path: 'zap_projects.png', timeout: TIMEOUT }).catch(e => {
-      console.error('Failed to take screenshot:', e);
-      throw e;
+    // Extract project links
+    const projectLinks = await page.evaluate(() => {
+      const resultsList = document.querySelector('.results > .results-list');
+      const linkElements = resultsList.querySelectorAll('.ember-view > li > .cell.auto > h3 > a');
+      return Array.from(linkElements).map(element => element.href);
     });
-    console.log('Screenshot taken and saved as zap_projects.png');
+
+    console.log(`Found ${projectLinks.length} project links`);
+
+    // Array to store project data
+    const projectsData = [];
+
+    // Visit each project page and extract information
+    for (const link of projectLinks) {
+      await page.goto(link, { waitUntil: 'networkidle0', timeout: TIMEOUT });
+      
+      const projectData = await page.evaluate(() => {
+        const title = document.querySelector('.cell.large-7 h1')?.textContent.trim();
+        return { title };
+      });
+
+      projectsData.push({ url: link, ...projectData });
+      console.log(`Processed: ${projectData.title}`);
+    }
+
+    // Save the data to a JSON file
+    fs.writeFileSync('projects_data.json', JSON.stringify(projectsData, null, 2));
+    console.log('Data saved to projects_data.json');
 
     // Close the browser
-    await browser.close().catch(e => {
-      console.error('Failed to close browser:', e);
-      throw e;
-    });
-    console.log('Browser closed successfully');
+    await browser.close();
   } catch (error) {
     console.error('An error occurred:', error);
   }
