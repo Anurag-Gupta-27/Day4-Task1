@@ -60,7 +60,7 @@ async function downloadFile(url, filePath) {
       console.log(`Creating project folder: ${projectFolder}`);
       fs.mkdirSync(projectFolder, { recursive: true });
 
-      // Expand all clickable headers
+      // Expand all clickable headers to reveal sections
       await page.evaluate(() => {
         document.querySelectorAll('.clickable-header').forEach(header => header.click());
       });
@@ -69,14 +69,26 @@ async function downloadFile(url, filePath) {
       console.log(`Found ${documentSections.length} document sections`);
 
       for (const section of documentSections) {
-        const headerText = await section.$eval('h5.clickable-header', el => el.textContent.trim());
+        const headerElement = await section.$('h5.clickable-header');
+        const headerText = await headerElement.evaluate(el => el.textContent.trim());
         console.log(`Processing section: ${headerText}`);
 
+        // Click on the header to reveal the document list
+        await headerElement.click();
+        
+        // Wait for the unordered list with class name public-documents-list-item to be visible
+        await page.waitForSelector('ul.public-documents-list-item', { timeout: TIMEOUT });
+
+        // Use a delay to ensure the list has fully loaded (if needed)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Create section folder
         const sectionFolder = path.join(projectFolder, headerText.replace(/[^a-z0-9]/gi, '_'));
         console.log(`Creating section folder: ${sectionFolder}`);
         fs.mkdirSync(sectionFolder, { recursive: true });
 
-        const files = await section.$$('ul.no-bullet.public-documents-list-item > li > a');
+        // Get all files in the section after clicking the header
+        const files = await section.$$('ul.public-documents-list-item > li > a');
         console.log(`Found ${files.length} files in section`);
 
         for (const file of files) {
